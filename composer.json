@@ -1,4 +1,19 @@
 {
+    "name": "arnoluo/conveyor",
+    "description": "PHP router, support simple route group function.",
+    "license": "MIT",
+    "homepage": "https://github.com/arnoluo/conveyor",
+    "keywords": [
+        "router",
+        "php-router",
+        "php"
+    ],
+    "authors": [
+        {
+            "name": "Arno Luo",
+            "email": "arnoluo@163.com"
+        }
+    ],
     "require": {
         "php": ">=5.3.3"
     },
