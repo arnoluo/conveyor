@@ -11,7 +11,7 @@ Like [Macaw](https://github.com/noahbuscher/macaw), if you have Composer, just i
 
 ```
 require: {
-    "arnoluo/conveyor": "dev-master"
+    "ween/conveyor": "dev-master"
 }
 ```
 
@@ -74,10 +74,10 @@ Route::get('/a/(:num)b/ab', function() {
 
 Route function:
 > `Route::group(array $params, closure $callback);`
-  `$params` only recognize two keywords now: 'prefix' and 'namespace':
-  `$params['prefix']` set a prefix uri for each group, it will be inherited in the subgroup;
-  `$params['namespace']` set the controller namespace for each group, so that class can be autoloaded with PSR-4. Only the first namespace is vaild in a group tree.
-  `$callback` a callable function.
+> `$params` only recognize two keywords now: 'prefix' and 'namespace':
+> `$params['prefix']` set a prefix uri for each group, it will be inherited in the subgroup;
+> `$params['namespace']` set the controller namespace for each group, so that class can be autoloaded with PSR-4. Only the first namespace is vaild in a group tree.
+> `$callback` a callable function.
 
 ```PHP
 Route::group(['prefix' => '/user', 'namespace' => 'App\\Controller\\'], function() {
