@@ -4,9 +4,9 @@ namespace Conveyor;
 
 /**
  * ***********************************************************
- * 本文件基于 https://github.com/noahbuscher/macaw
- * 添加了路由群组功能，可对群组内路由设置统一的路由前缀，控制器命名空间
- * 根据添加功能重写了代码
+ * This is a project base on https://github.com/noahbuscher/macaw, so that basic functions are still working well.
+ * Some code are rewrited to support route group, on this change you can set different route prefix and namespace in each route group.
+ * Middleware support like Laravel in route group is on the schedule.
  * ***********************************************************
  * @method static Route get(string $route, Callable $callback)
  * @method static Route post(string $route, Callable $callback)
@@ -74,6 +74,11 @@ class Route {
     {
         $uri = strpos($uri, '/') === 0 ? $uri : '/' . $uri;
         return self::$prefix . $uri;
+    }
+
+    public static function nameSpace($str)
+    {
+        self::$namespace = trim($str, '\\') . '\\';
     }
 
     public static function prependNamespace($class)

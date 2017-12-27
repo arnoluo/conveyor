@@ -11,7 +11,8 @@
     "authors": [
         {
             "name": "Arno Luo",
-            "email": "arnoluo@163.com"
+            "email": "arnoluo@163.com",
+            "homepage": "http://weens.org"
         }
     ],
     "require": {
