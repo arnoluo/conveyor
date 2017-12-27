@@ -31,7 +31,7 @@ Route::error(function() {
 ```
 
 You can alse define a common namespace, instead of writing group params:
-> If you call this function, all namespace parameter in `Route::group();` will not work;
+> If you call this function, all namespace parameter in `Route::group()` will not work;
 ```PHP
 Route::nameSpace('App\\Controller\\');
 ```
@@ -73,11 +73,18 @@ Route::get('/a/(:num)b/ab', function() {
 ```
 
 Route function:
-> `Route::group(array $params, closure $callback);`
-> `$params` only recognize two keywords now: 'prefix' and 'namespace':
-> `$params['prefix']` set a prefix uri for each group, it will be inherited in the subgroup;
-> `$params['namespace']` set the controller namespace for each group, so that class can be autoloaded with PSR-4. Only the first namespace is vaild in a group tree.
-> `$callback` a callable function.
+
+```PHP
+Route::group(array $params, closure $callback);
+```
+`$params` only recognize two keywords now:
+
+`$params['prefix']` set a prefix uri for current group;
+
+`$params['namespace']` set the namespace for current group, so that class can be autoloaded with PSR-4.
+
+> In a group tree, only the first namespace will work.
+
 
 ```PHP
 Route::group(['prefix' => '/user', 'namespace' => 'App\\Controller\\'], function() {
