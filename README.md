@@ -2,7 +2,7 @@
 ## Intro
 Conveyor is a PHP router, supports simple route group function.
 
-This is a project base on https://github.com/noahbuscher/macaw, so that basic functions are still working well. Some code are rewrited to support route group, on this change you can set different route prefix and namespace in each route group.
+This is a project base on https://github.com/noahbuscher/macaw, so that basic functions are still working well. Some codes are rewrited to support route group, on this change you can set different route prefix and namespace in each route group.
 
 Middleware support like Laravel in route group is on the schedule.
 
@@ -23,7 +23,7 @@ use Conveyor\Route;
 ```
 
 ### Second, common setting:
-You can rewrite 404 notice when request uri are not catched:
+You can rewrite 404 notice when route dispatch failed:
 ```PHP
 Route::error(function() {
   echo '404 :: Not Found';
@@ -72,7 +72,7 @@ Route::get('/a/(:num)b/ab', function() {
 
 ```
 
-Route function:
+Route group function:
 
 ```PHP
 Route::group(array $params, closure $callback);
