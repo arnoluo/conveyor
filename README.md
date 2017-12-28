@@ -77,11 +77,11 @@ Route group function:
 ```PHP
 Route::group(array $params, closure $callback);
 ```
-`$params` only recognize two keywords now:
+> `$params` only recognize two keywords now:
 
-`$params['prefix']` set a prefix uri for current group;
+> `$params['prefix']` set a prefix uri for current group;
 
-`$params['namespace']` set the namespace for current group, so that class can be autoloaded with PSR-4.
+> `$params['namespace']` set the namespace for current group, so that class can be autoloaded with PSR-4.
 
 > In a group tree, only the first namespace will work.
 
