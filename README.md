@@ -122,7 +122,7 @@ Route::register([
     'prefix' => '',
     'namespace' => 'App\\Controllers\\',
     'middlewarePath' => [
-        //'alias' => \Nampspace\Class::class;
+        //'alias' => \Namespace\Class::class;
         'abc' => \Foo\Bar\A::class,
         'home' => \App\Middlewares\HomeMiddleware::class,
     ],
