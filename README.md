@@ -69,15 +69,14 @@ Route::get('/a/(:num)b/ab', function() {
 #### Route group function:
 
 ```PHP
+/**
+ * `$params` recognize three keywords now:
+ * `$params['prefix']` set a prefix uri for current group;
+ * `$params['namespace']` set the namespace for current group, so that class can be autoloaded with PSR-4;
+ * `$params['middleware']` set some registered middlewares before call final action.
+ */
 Route::group(array $params, closure $callback);
 ```
-`$params` recognize three keywords now:
-
-`$params['prefix']` set a prefix uri for current group;
-
-`$params['namespace']` set the namespace for current group, so that class can be autoloaded with PSR-4.
-
-`$params['middleware']` set some registered middlewares before call final action.
 
 > In a group tree, only the first namespace will work.
 
