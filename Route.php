@@ -5,8 +5,11 @@ namespace Conveyor;
 /**
  * ***********************************************************
  * This is a project base on https://github.com/noahbuscher/macaw, so that basic functions are still working well.
- * Some code are rewrited to support route group, on this change you can set different route prefix and namespace in each route group.
- * Middleware support like Laravel in route group is on the schedule.
+ * Most codes are rewrited to support route group function.
+ * On this change you can:
+ * Register available uri-prefix, class namespace and middleware initially;
+ * Set different route prefix and namespace in each route group;
+ * Set simple middlewares for every route.
  * ***********************************************************
  * @method static Route get(string $route, Callable $callback)
  * @method static Route post(string $route, Callable $callback)
@@ -20,14 +23,43 @@ class Route {
     public static $routes = array();
     public static $methods = array();
     public static $callbacks = array();
+    public static $error_callback;
+    public static $middlewares = array();
+    public static $object = null;
     public static $patterns = array(
         ':any' => '[^/]+',
         ':num' => '[0-9]+',
         ':all' => '.*'
     );
-    public static $error_callback;
-    public static $namespace = '';
-    public static $prefix = '';
+    public static $data = array(
+        'namespace' => '',
+        'prefix' => '',
+        'middleware' => [],
+        'middlewarePath' => [],
+        'pos' => -1
+    );
+
+    public static function register($params = [])
+    {
+        $prefix = empty($params['prefix']) ? '' : '/' . trim(trim($params['prefix']), '/');
+        $namespace = isset($params['namespace']) ? trim($params['namespace'], '\\') . '\\' : '';
+        $middlewarePath = isset($params['middlewarePath']) ? $params['middlewarePath'] : '';
+        $middlewarePath  = is_array($middlewarePath) ? $middlewarePath : [];
+        $middleware = isset($params['middleware']) ? $params['middleware'] : '';
+
+        self::init($prefix, $namespace, $middlewarePath, $middleware);
+    }
+
+    public static function namespace($str)
+    {
+        self::$data['namespace'] = trim($str, '\\') . '\\';
+    }
+
+    public function middleware($middleware)
+    {
+        $middleware = self::resolveMiddleware($middleware);
+        self::setMiddleware($middleware);
+    }
 
     /**
      * Defines a route w/ callback and method
@@ -39,17 +71,22 @@ class Route {
             $params[1] = self::prependNamespace($params[1]);
         }
         $callback = $params[1];
+        $middleware = self::$data['middleware'];
 
         array_push(self::$routes, $uri);
         array_push(self::$methods, strtoupper($method));
         array_push(self::$callbacks, $callback);
+        array_push(self::$middlewares, $middleware);
+        self::$data['pos']++;
+
+        return self::instance();
     }
 
     // Add group for route
     public static function group(array $params, callable $callback)
     {
-        $allowParams = ['prefix', 'namespace'];
-        foreach (array_diff(array_keys($params), $allowParams) as $key) {
+        $allowedParams = ['prefix', 'namespace', 'middleware'];
+        foreach (array_diff(array_keys($params), $allowedParams) as $key) {
             unset($params[$key]);
         }
         $lastParams = self::constructGroup($params);
@@ -70,55 +107,164 @@ class Route {
         self::$halts = $flag;
     }
 
-    public static function prefix($uri)
+    public function __destruct()
+    {
+        self::dispatch();
+    }
+
+    protected static function init($prefix = '', $namespace = '', $middlewarePath = [], $middleware = [])
+    {
+        self::$data['prefix'] = $prefix;
+        self::$data['namespace'] = $namespace;
+        self::$data['middlewarePath'] = $middlewarePath;
+        self::$data['middleware'] = self::resolveMiddleware($middleware);
+    }
+
+    protected static function instance()
+    {
+        if (is_null(self::$object)) {
+            self::$object = new Route();
+        }
+
+        return self::$object;
+    }
+
+    protected static function setMiddleware($middlewareArray)
+    {
+        $pos = self::$data['pos'];
+        self::$middlewares[$pos] = array_unique(array_merge(self::$middlewares[$pos], $middlewareArray));
+    }
+
+    protected static function resolveMiddleware($middleware)
+    {
+        if (!is_array($middleware)) {
+            $middleware = explode(',', $middleware);
+        }
+
+        $allowedMiddlewares = array_keys(self::$data['middlewarePath']);
+        $rightMiddleware = [];
+        foreach ($middleware as $mdl) {
+            $mdl = trim($mdl);
+            if (in_array($mdl, $allowedMiddlewares, true)) {
+                $rightMiddleware[] = $mdl;
+            }
+        }
+
+        return $rightMiddleware;
+    }
+
+    protected static function prefix($uri)
     {
         $uri = strpos($uri, '/') === 0 ? $uri : '/' . $uri;
-        return self::$prefix . $uri;
+        return self::$data['prefix'] . $uri;
     }
 
-    public static function nameSpace($str)
-    {
-        self::$namespace = trim($str, '\\') . '\\';
-    }
-
-    public static function prependNamespace($class)
+    protected static function prependNamespace($class)
     {
         $parts = explode('/', $class);
-        return self::$namespace . end($parts);
+        return self::$data['namespace'] . end($parts);
     }
 
-    public static function constructGroup($params) {
+    protected static function constructGroup($params) {
         $lastParams = [];
         foreach ($params as $param => $value) {
             if (empty($value)) {
                 continue;
             }
 
+            $lastParams[$param] = self::$data[$param];
+
             if ($param == 'prefix') {
-                $lastParams[$param] = self::$$param;
-                self::$$param .= '/' . trim($value, '/');
+                self::$data[$param] .= '/' . trim($value, '/');
             }
 
-            if ($param == 'namespace' && empty(self::$$param)) {
-                $lastParams[$param] = self::$$param;
-                self::$$param = trim($value, '\\') . '\\';
+            if ($param == 'namespace' && empty(self::$data[$param])) {
+                self::$data[$param] = trim($value, '\\') . '\\';
+            }
+
+            if ($param == 'middleware') {
+                $middleware = self::resolveMiddleware($value);
+                self::$data[$param] = array_unique(array_merge(self::$data[$param], $middleware));
             }
         }
 
         return $lastParams;
     }
 
-    public static function destructGroup($params) {
+    protected static function destructGroup($params) {
         foreach ($params as $param => $value) {
-            self::$$param = $value;
+            self::$data[$param] = $value;
         }
+    }
+
+    protected static function resolveCallback($callback, $defaultMethod = 'handle')
+    {
+        if (is_object($callback)) {
+            return $callback;
+        }
+
+        // Grab all parts based on a / separator
+        $parts = explode('/', $callback);
+
+        // Collect the last index of the array
+        $last = end($parts);
+
+        // Grab the controller name and method call
+        $segments = explode('@',$last);
+
+        if (!class_exists($segments[0])) {
+            return false;
+        }
+
+        if (!isset($segments[1])) {
+            $segments[1] = $defaultMethod;
+        }
+
+        if (!method_exists($segments[0], $segments[1])) {
+            return false;
+        }
+
+        // Instanitate controller
+        $controller = new $segments[0]();
+
+        return array($controller, $segments[1]);
+    }
+
+    protected static function pipeMiddleware($pos)
+    {
+        if (!isset(self::$middlewares[$pos])) {
+            return true;
+        }
+
+        foreach (self::$middlewares[$pos] as $mdl) {
+
+            $callback = self::resolveCallback(self::$data['middlewarePath'][$mdl]);
+
+            if ($callback === false) {
+                echo 'Middleware: ' . self::$data['middlewarePath'][$mdl] . '@handle() not found';
+                exit();
+            }
+
+            $result = call_user_func($callback);
+            if ($result !== true) {
+                echo json_encode($result);
+                exit();
+            }
+        }
+
+        return true;
     }
 
     /**
      * Runs the callback for the given request
      */
-    public static function dispatch()
+    protected static function dispatch()
     {
+/*        var_dump(self::$routes);
+        var_dump(self::$callbacks);
+        var_dump(self::$middlewares);
+        var_dump(self::$data);
+        exit();*/
         $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         $method = $_SERVER['REQUEST_METHOD'];
 
@@ -137,31 +283,18 @@ class Route {
                 if (self::$methods[$route] == $method || self::$methods[$route] == 'ANY') {
                     $found_route = true;
 
-                    // If route is not an object
-                    if (!is_object(self::$callbacks[$route])) {
+                    // run middleware
+                    self::pipeMiddleware($route);
 
-                        // Grab all parts based on a / separator
-                        $parts = explode('/',self::$callbacks[$route]);
-
-                        // Collect the last index of the array
-                        $last = end($parts);
-
-                        // Grab the controller name and method call
-                        $segments = explode('@',$last);
-
-                        // Instanitate controller
-                        $controller = new $segments[0]();
-
-                        // Call method
-                        $controller->{$segments[1]}();
-
-                        if (self::$halts) return;
+                    // run final function
+                    $callback = self::resolveCallback(self::$callbacks[$route]);
+                    if ($callback === false) {
+                        echo self::$callbacks[$route] . ' ERROR: Controller or action not found';
                     } else {
-                        // Call closure
-                        call_user_func(self::$callbacks[$route]);
-
-                        if (self::$halts) return;
+                        call_user_func($callback);
                     }
+
+                    if (self::$halts) return;
                 }
             }
         } else {
@@ -174,40 +307,24 @@ class Route {
                         if (self::$methods[$pos] == $method || self::$methods[$pos] == 'ANY') {
                             $found_route = true;
 
+                            // run middleware
+                            self::pipeMiddleware($route);
+
                             // Remove $matched[0] as [1] is the first parameter.
                             array_shift($matched);
 
-                            if (!is_object(self::$callbacks[$pos])) {
-
-                                // Grab all parts based on a / separator
-                                $parts = explode('/',self::$callbacks[$pos]);
-
-                                // Collect the last index of the array
-                                $last = end($parts);
-
-                                // Grab the controller name and method call
-                                $segments = explode('@',$last);
-
-                                // Instanitate controller
-                                $controller = new $segments[0]();
-
-                                // Fix multi parameters
-                                if (!method_exists($controller, $segments[1])) {
-                                    echo "controller and action not found";
-                                } else {
-                                    call_user_func_array(array($controller, $segments[1]), $matched);
-                                }
-
-                                if (self::$halts) return;
+                            // run final function
+                            $callback = self::resolveCallback(self::$callbacks[$pos]);
+                            if ($callback === false) {
+                                echo self::$callbacks[$pos] . ' ERROR: Controller or action not found';
                             } else {
-                                call_user_func_array(self::$callbacks[$pos], $matched);
-
-                                if (self::$halts) return;
+                                call_user_func_array($callback, $matched);
                             }
+
+                            if (self::$halts) return;
                         }
                     }
                 }
-                
                 $pos++;
             }
         }
