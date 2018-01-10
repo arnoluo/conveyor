@@ -152,7 +152,7 @@ class Route {
 
         return $rightMiddleware;
     }
-
+    
     protected static function prefix($uri)
     {
         $uri = strpos($uri, '/') === 0 ? $uri : '/' . $uri;
