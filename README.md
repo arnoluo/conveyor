@@ -70,10 +70,10 @@ Route::get('/a/(:num)b/ab', function() {
 
 ```PHP
 /**
- * `$params` recognize three keywords now:
- * `$params['prefix']` set a prefix uri for current group;
- * `$params['namespace']` set the namespace for current group, so that class can be autoloaded with PSR-4;
- * `$params['middleware']` set some registered middlewares before call final action.
+ * $params recognize three keywords now:
+ * $params['prefix'] set a prefix uri for current group;
+ * $params['namespace'] set the namespace for current group, so that class can be autoloaded with PSR-4;
+ * $params['middleware'] set some registered middlewares before call final action.
  */
 Route::group(array $params, closure $callback);
 ```
@@ -85,6 +85,7 @@ Route::group(array $params, closure $callback);
 Route::group(['prefix' => '/user', 'namespace' => 'App\\Controller\\'], function() {
 
     Route::group(['prefix' => '/sub1', 'namespace' => 'Bpp\\Controller\\', 'middleware' => 'foo, bar'], function() {
+        
         Route::get('/', function() {
             echo 'I can receive uri like /user/sub1';
         });
@@ -95,6 +96,7 @@ Route::group(['prefix' => '/user', 'namespace' => 'App\\Controller\\'], function
     });
 
     Route::group(['prefix' => '/sub2'], function() {
+        
         Route::get('/', function() {
             echo 'I can receive uri like /user/sub2/';
         });
@@ -161,7 +163,9 @@ Route::register([
         'home' => \App\Middlewares\HomeMiddleware::class,
     ]
 ]);
+
 // some routes...
+
 Route::get('abc', 'HomeController@demo')->middleware('home');
 ```
 HomeMiddleware.php
