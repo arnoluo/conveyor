@@ -260,11 +260,6 @@ class Route {
      */
     protected static function dispatch()
     {
-/*        var_dump(self::$routes);
-        var_dump(self::$callbacks);
-        var_dump(self::$middlewares);
-        var_dump(self::$data);
-        exit();*/
         $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         $method = $_SERVER['REQUEST_METHOD'];
 
@@ -289,7 +284,7 @@ class Route {
                     // run final function
                     $callback = self::resolveCallback(self::$callbacks[$route]);
                     if ($callback === false) {
-                        echo self::$callbacks[$route] . ' ERROR: Controller or action not found';
+                        echo 'ERROR(' . self::$callbacks[$route] . '): Controller or action not found';
                     } else {
                         call_user_func($callback);
                     }
@@ -316,7 +311,7 @@ class Route {
                             // run final function
                             $callback = self::resolveCallback(self::$callbacks[$pos]);
                             if ($callback === false) {
-                                echo self::$callbacks[$pos] . ' ERROR: Controller or action not found';
+                                echo 'ERROR(' . self::$callbacks[$pos] . '): Controller or action not found';
                             } else {
                                 call_user_func_array($callback, $matched);
                             }
