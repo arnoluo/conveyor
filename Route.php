@@ -19,7 +19,6 @@ namespace Conveyor;
  * @method static Route head(string $route, Callable $callback)
  */
 class Route {
-    public static $halts = false;
     public static $routes = array();
     public static $methods = array();
     public static $callbacks = array();
@@ -36,9 +35,14 @@ class Route {
         'prefix' => '',
         'middleware' => [],
         'middlewarePath' => [],
+        'content' => null,
         'pos' => -1
     );
 
+    /**
+     * Register some common data,
+     * such as 'prefix', 'namespace', 'middlewarePath', 'middleware'.
+     */
     public static function register($params = [])
     {
         $prefix = empty($params['prefix']) ? '' : '/' . trim(trim($params['prefix']), '/');
@@ -50,11 +54,23 @@ class Route {
         self::init($prefix, $namespace, $middlewarePath, $middleware);
     }
 
+    /**
+     * Set a common namespace for following controllers.
+     */
     public static function namespace($str)
     {
         self::$data['namespace'] = trim($str, '\\') . '\\';
     }
 
+    /**
+     * Set some middlewares for a single router.
+     *
+     * @author Arno
+     *
+     * @param  mixed $middleware Array or string
+     *
+     * @return void
+     */
     public function middleware($middleware)
     {
         $middleware = self::resolveMiddleware($middleware);
@@ -62,7 +78,7 @@ class Route {
     }
 
     /**
-     * Defines a route w/ callback and method
+     * Define a route, callback, method and middleware.
      */
     public static function __callstatic($method, $params)
     {
@@ -82,7 +98,16 @@ class Route {
         return self::instance();
     }
 
-    // Add group for route
+    /**
+     * Add group for route
+     *
+     * @author Arno
+     *
+     * @param  array    $params   Recognizable keywords: 'prefix', 'namespace', 'middleware'.
+     * @param  callable $callback closure
+     *
+     * @return void
+     */
     public static function group(array $params, callable $callback)
     {
         $allowedParams = ['prefix', 'namespace', 'middleware'];
@@ -96,22 +121,27 @@ class Route {
 
     /**
      * Defines callback if route is not found
-    */
+     */
     public static function error($callback)
     {
         self::$error_callback = $callback;
     }
 
-    public static function haltOnMatch($flag = true)
-    {
-        self::$halts = $flag;
-    }
-
+    /**
+     * Dispatch route and echo response.
+     */
     public function __destruct()
     {
         self::dispatch();
+        if (!is_null(self::$data['content'])) {
+            echo self::$data['content'];
+            self::$data['content'] = null;
+        }
     }
 
+    /**
+     * Init Route from register.
+     */
     protected static function init($prefix = '', $namespace = '', $middlewarePath = [], $middleware = [])
     {
         self::$data['prefix'] = $prefix;
@@ -120,6 +150,9 @@ class Route {
         self::$data['middleware'] = self::resolveMiddleware($middleware);
     }
 
+    /**
+     * Return a instance of Route.
+     */
     protected static function instance()
     {
         if (is_null(self::$object)) {
@@ -203,14 +236,8 @@ class Route {
             return $callback;
         }
 
-        // Grab all parts based on a / separator
-        $parts = explode('/', $callback);
-
-        // Collect the last index of the array
-        $last = end($parts);
-
         // Grab the controller name and method call
-        $segments = explode('@',$last);
+        $segments = explode('@', $callback);
 
         if (!class_exists($segments[0])) {
             return false;
@@ -241,18 +268,39 @@ class Route {
             $callback = self::resolveCallback(self::$data['middlewarePath'][$mdl]);
 
             if ($callback === false) {
-                echo 'Middleware: ' . self::$data['middlewarePath'][$mdl] . '@handle() not found';
-                exit();
+                self::render('Middleware: ' . self::$data['middlewarePath'][$mdl] . '@handle() not found');
+                return false;
             }
 
             $result = call_user_func($callback);
             if ($result !== true) {
-                echo json_encode($result);
-                exit();
+                self::render($result);
+                return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * Rendering response content simply.
+     */
+    protected static function render($content)
+    {
+        if ($content === null) {
+            return;
+        }
+
+        if (is_array($content)) {
+            $content = json_encode($content);
+        }
+
+        if (!is_string($content) && !is_numeric($content) && !is_callable(array($content, '__toString'))) {
+            self::$data['content'] = sprintf('The Response content must be a string or object implementing __toString(), "%s" given.', gettype($content));
+            return;
+        }
+
+        self::$data['content'] = (string) $content;
     }
 
     /**
@@ -266,8 +314,6 @@ class Route {
         $searches = array_keys(static::$patterns);
         $replaces = array_values(static::$patterns);
 
-        $found_route = false;
-
         self::$routes = preg_replace('/\/+/', '/', self::$routes);
 
         // Check if route is defined without regex
@@ -276,70 +322,62 @@ class Route {
             foreach ($route_pos as $route) {
                 // Using an ANY option to match both GET and POST requests
                 if (self::$methods[$route] == $method || self::$methods[$route] == 'ANY') {
-                    $found_route = true;
-
-                    // run middleware
-                    self::pipeMiddleware($route);
-
-                    // run final function
-                    $callback = self::resolveCallback(self::$callbacks[$route]);
-                    if ($callback === false) {
-                        echo 'ERROR(' . self::$callbacks[$route] . '): Controller or action not found';
-                    } else {
-                        call_user_func($callback);
+                    // Middleware check
+                    if (self::pipeMiddleware($route)) {
+                        // run final function
+                        $callback = self::resolveCallback(self::$callbacks[$route]);
+                        if ($callback === false) {
+                            self::render('ERROR(' . self::$callbacks[$route] . '): Controller or action not found');
+                        } else {
+                            self::render(call_user_func($callback));
+                        }
                     }
-
-                    if (self::$halts) return;
+                    return;
                 }
             }
         } else {
             // Check if defined with regex
-            $pos = 0;
-            foreach (self::$routes as $route) {
-                if (strpos($route, ':') !== false) {
-                    $route = str_replace($searches, $replaces, $route);
-                    if (preg_match('#^' . $route . '$#', $uri, $matched)) {
-                        if (self::$methods[$pos] == $method || self::$methods[$pos] == 'ANY') {
-                            $found_route = true;
+            for ($pos = 0; $pos <= self::$data['pos']; $pos++) {
+                if (strpos(self::$routes[$pos], ':') === false) {
+                    echo $pos;
+                    continue;
+                }
 
-                            // run middleware
-                            self::pipeMiddleware($route);
-
+                $route = str_replace($searches, $replaces, self::$routes[$pos]);
+                if (preg_match('#^' . $route . '$#', $uri, $matched)) {
+                    if (self::$methods[$pos] == $method || self::$methods[$pos] == 'ANY') {
+                        // Middleware check
+                        if (self::pipeMiddleware($route)) {
                             // Remove $matched[0] as [1] is the first parameter.
                             array_shift($matched);
-
                             // run final function
                             $callback = self::resolveCallback(self::$callbacks[$pos]);
                             if ($callback === false) {
-                                echo 'ERROR(' . self::$callbacks[$pos] . '): Controller or action not found';
+                                self::render('ERROR(' . self::$callbacks[$pos] . '): Controller or action not found');
                             } else {
-                                call_user_func_array($callback, $matched);
+                                self::render(call_user_func_array($callback, $matched));
                             }
-
-                            if (self::$halts) return;
                         }
+                        return;
                     }
                 }
-                $pos++;
             }
         }
 
         // Run the error callback if the route was not found
-        if ($found_route == false) {
-            if (!self::$error_callback) {
-                self::$error_callback = function() {
-                    header($_SERVER['SERVER_PROTOCOL']." 404 Not Found");
-                    echo '404';
-                };
-            } else {
-                if (is_string(self::$error_callback)) {
-                    self::get($_SERVER['REQUEST_URI'], self::$error_callback);
-                    self::$error_callback = null;
-                    self::dispatch();
-                    return ;
-                }
+        if (!self::$error_callback) {
+            self::$error_callback = function() {
+                header($_SERVER['SERVER_PROTOCOL']." 404 Not Found");
+                return 404;
+            };
+        } else {
+            if (is_string(self::$error_callback)) {
+                self::get($_SERVER['REQUEST_URI'], self::$error_callback);
+                self::$error_callback = null;
+                self::dispatch();
+                return;
             }
-            call_user_func(self::$error_callback);
         }
+        self::render(call_user_func(self::$error_callback));
     }
 }
