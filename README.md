@@ -34,15 +34,15 @@ use Conveyor\Route;
 
 ```PHP
 Route::get('/', function() {
-    echo 'GET request';
+    return 'GET request';
 });
 
 Route::post('/', function() {
-    echo 'POST request';
+    return 'POST request';
 });
 
 Route::any('/', function() {
-    echo 'both GET and POST request';
+    return 'both GET and POST request';
 });
 
 Route::get('/', 'DemoControllers@method');
@@ -53,15 +53,15 @@ Route::get('/', 'DemoControllers@method');
 
 ```PHP
 Route::get('/a/(:all)b/ab', function() {
-    echo 'I can receive all request uri like /a/abcb/ab, /a/123b/ab, /a/b/c/db/ab';
+    return 'I can receive all request uri like /a/abcb/ab, /a/123b/ab, /a/b/c/db/ab';
 });
 
 Route::get('/a/(:any)b/ab', function() {
-    echo 'I can receive all request uri like /a/ab/ab, /a/4b/ab, /a/a4b/ab';
+    return 'I can receive all request uri like /a/ab/ab, /a/4b/ab, /a/a4b/ab';
 });
 
 Route::get('/a/(:num)b/ab', function() {
-    echo 'I can receive all request uri like /a/0123456789b/ab';
+    return 'I can receive all request uri like /a/0123456789b/ab';
 });
 
 ```
@@ -87,7 +87,7 @@ Route::group(['prefix' => '/user', 'namespace' => 'App\\Controller\\'], function
     Route::group(['prefix' => '/sub1', 'namespace' => 'Bpp\\Controller\\', 'middleware' => 'foo, bar'], function() {
         
         Route::get('/', function() {
-            echo 'I can receive uri like /user/sub1';
+            return 'I can receive uri like /user/sub1';
         });
 
         // Request /user/sub1/abc will load class DemoController in namespace App\\Controller\\
@@ -98,11 +98,11 @@ Route::group(['prefix' => '/user', 'namespace' => 'App\\Controller\\'], function
     Route::group(['prefix' => '/sub2'], function() {
         
         Route::get('/', function() {
-            echo 'I can receive uri like /user/sub2/';
+            return 'I can receive uri like /user/sub2/';
         });
 
         Route::get('/a(:all)', function() {
-            echo 'I can receive all request uri start with /user/sub2/a';
+            return 'I can receive all request uri start with /user/sub2/a';
         });
     });
 
@@ -134,7 +134,7 @@ Route::register([
 Rewrite 404 notice when route dispatch failed:
 ```PHP
 Route::error(function() {
-  echo '404 :: Not Found';
+  return '404 :: Not Found';
 });
 ```
 
