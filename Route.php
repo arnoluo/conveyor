@@ -57,9 +57,9 @@ class Route {
     /**
      * Set a common namespace for following controllers.
      */
-    public static function namespace($str)
+    public static function setNameSpace($str)
     {
-        self::$data['namespace'] = trim($str, '\\') . '\\';
+        self::$data['namespace'] = trim($str, "\\") . "\\";
     }
 
     /**
@@ -135,7 +135,6 @@ class Route {
         self::dispatch();
         if (!is_null(self::$data['content'])) {
             echo self::$data['content'];
-            self::$data['content'] = null;
         }
     }
 
@@ -339,7 +338,6 @@ class Route {
             // Check if defined with regex
             for ($pos = 0; $pos <= self::$data['pos']; $pos++) {
                 if (strpos(self::$routes[$pos], ':') === false) {
-                    echo $pos;
                     continue;
                 }
 
@@ -368,7 +366,7 @@ class Route {
         if (!self::$error_callback) {
             self::$error_callback = function() {
                 header($_SERVER['SERVER_PROTOCOL']." 404 Not Found");
-                return 404;
+                echo 404;
             };
         } else {
             if (is_string(self::$error_callback)) {

@@ -141,7 +141,7 @@ Route::error(function() {
 Define a common namespace initially, instead of writing group params:
 > If you call this function first, all namespace parameter in `Route::group()` will not work;
 ```PHP
-Route::namespace('App\\Controller\\');
+Route::setNameSpace('App\\Controller\\');
 ```
 
 Set some middlewares for a single route:
