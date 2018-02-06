@@ -173,7 +173,7 @@ HomeMiddleware.php
 ```PHP
 <?php
 
-namespace App\Controllers;
+namespace App\Middlewares;
 
 class HomeMiddleware
 {
