@@ -2,14 +2,19 @@
 
 namespace Conveyor;
 
+use Closure;
+use Conveyor\RouteException;
+
 /**
  * ***********************************************************
- * This is a project base on https://github.com/noahbuscher/macaw, so that basic functions are still working well.
- * Most codes are rewrited to support route group function.
- * On this change you can:
+ * Features:
  * Register available uri-prefix, class namespace and middleware initially;
  * Set different route prefix and namespace in each route group;
- * Set simple middlewares for every route.
+ * Set middlewares for every route.
+ * 
+ * References Project:
+ * https://github.com/noahbuscher/macaw
+ * https://github.com/nikic/FastRoute
  * ***********************************************************
  * @method static Route get(string $route, Callable $callback)
  * @method static Route post(string $route, Callable $callback)
@@ -17,49 +22,95 @@ namespace Conveyor;
  * @method static Route delete(string $route, Callable $callback)
  * @method static Route options(string $route, Callable $callback)
  * @method static Route head(string $route, Callable $callback)
+ * @method static Route group(array $params, Callable $callback)
  */
 class Route {
+
+    /**
+     * Normal route uri array
+     * @var array
+     */
     public static $routes = array();
-    public static $methods = array();
+
+    /**
+     * Regexp route uri array
+     * @var array
+     */
+    public static $matches = array();
+
+    /**
+     * Callback function array for each route
+     * @var array
+     */
     public static $callbacks = array();
-    public static $error_callback;
+
+    /**
+     * Middleware array for each route
+     * @var array
+     */
     public static $middlewares = array();
-    public static $object = null;
+
+    /**
+     * Regex matching rules
+     * @var array
+     */
     public static $patterns = array(
         ':any' => '[^/]+',
         ':num' => '[0-9]+',
         ':all' => '.*'
     );
-    public static $data = array(
+
+    /**
+     * Common data for all routes
+     * @var array
+     */
+    public static $common = array(
+        'middleware' => array(),
         'namespace' => '',
         'prefix' => '',
-        'middleware' => [],
-        'middlewarePath' => [],
-        'content' => null,
-        'pos' => -1
+        'depth' => 0
     );
 
     /**
-     * Register some common data,
-     * such as 'prefix', 'namespace', 'middlewarePath', 'middleware'.
+     * Middleware path array
+     * ['alias' => \Namespace\Class::class];
+     * @var array
      */
-    public static function register($params = [])
-    {
-        $prefix = empty($params['prefix']) ? '' : '/' . trim(trim($params['prefix']), '/');
-        $namespace = isset($params['namespace']) ? trim($params['namespace'], '\\') . '\\' : '';
-        $middlewarePath = isset($params['middlewarePath']) ? $params['middlewarePath'] : '';
-        $middlewarePath  = is_array($middlewarePath) ? $middlewarePath : [];
-        $middleware = isset($params['middleware']) ? $params['middleware'] : '';
-
-        self::init($prefix, $namespace, $middlewarePath, $middleware);
-    }
+    public static $alias = array();
 
     /**
-     * Set a common namespace for following controllers.
+     * Error callback function
+     * @var callable
      */
-    public static function setNameSpace($str)
+    public static $error = null;
+
+    /**
+     * Route instance
+     * @var object
+     */
+    public static $object = null;
+
+    /**
+     * Position of current registered route
+     * @var integer
+     */
+    public static $pos = null;
+
+    /**
+     * Response content
+     * @var string
+     */
+    public static $content = null;
+
+    /**
+     * Main function, handle all routes addition.
+     */
+    public static function __callstatic($method, $params)
     {
-        self::$data['namespace'] = trim($str, "\\") . "\\";
+        list($uri, $callback) = $params;
+        self::pushRoute($method, $uri, $callback);
+
+        return self::instance();
     }
 
     /**
@@ -73,29 +124,40 @@ class Route {
      */
     public function middleware($middleware)
     {
-        $middleware = self::resolveMiddleware($middleware);
         self::setMiddleware($middleware);
     }
 
     /**
-     * Define a route, callback, method and middleware.
+     * Register some common data,
+     * such as 'prefix', 'namespace', 'alias', 'middleware'.
      */
-    public static function __callstatic($method, $params)
+    public static function register($params = [])
     {
-        $uri = self::prefix($params[0]);
-        if (is_string($params[1])) {
-            $params[1] = self::prependNamespace($params[1]);
+        self::init();
+        $alias = (array)($params['alias'] ?? []);
+        $middleware = trim($params['middleware'] ?? '');
+        $namespace = trim($params['namespace'] ?? '');
+        $prefix = self::prefix($params['prefix'] ?? '');
+
+        self::init($prefix, $namespace, $alias, $middleware);
+    }
+
+    protected static function pushRoute($method, $uri, $callback)
+    {
+        $method = strtoupper($method);
+        $uri = self::prefix($uri) ? : '/';
+        strpos($uri, '(:') === false ? $map = & self::$routes : $map = & self::$matches;
+        if ($currentPos = $map[$method][$uri] ?? false) {
+            unset(self::$middlewares[$currentPos]);
+        } else {
+            $currentPos = self::pushPos();
+            $map[$method][$uri] = $currentPos;
         }
-        $callback = $params[1];
-        $middleware = self::$data['middleware'];
-
-        array_push(self::$routes, $uri);
-        array_push(self::$methods, strtoupper($method));
-        array_push(self::$callbacks, $callback);
-        array_push(self::$middlewares, $middleware);
-        self::$data['pos']++;
-
-        return self::instance();
+        
+        self::$callbacks[$currentPos] = self::prependNamespace($callback);
+        if (self::common('depth') > 0) {
+            self::$middlewares[$currentPos] = self::common('middleware');
+        }
     }
 
     /**
@@ -104,19 +166,25 @@ class Route {
      * @author Arno
      *
      * @param  array    $params   Recognizable keywords: 'prefix', 'namespace', 'middleware'.
-     * @param  callable $callback closure
+     * @param  \Closure|string $callback
      *
      * @return void
      */
-    public static function group(array $params, callable $callback)
+    public static function group(array $params, $routes)
     {
         $allowedParams = ['prefix', 'namespace', 'middleware'];
         foreach (array_diff(array_keys($params), $allowedParams) as $key) {
             unset($params[$key]);
         }
-        $lastParams = self::constructGroup($params);
-        call_user_func($callback);
-        self::destructGroup($lastParams);
+
+        $context = self::constructGroup($params);
+        if ($routes instanceof Closure) {
+            $routes(self::instance());
+        } else {
+            require $routes;
+        }
+
+        self::destructGroup($context);
     }
 
     /**
@@ -124,29 +192,70 @@ class Route {
      */
     public static function error($callback)
     {
-        self::$error_callback = $callback;
+        self::$error = $callback;
     }
 
     /**
-     * Dispatch route and echo response.
+     * (For container)
+     * Handle request and return a serialized array of callbacks.
      */
-    public function __destruct()
+    public static function capture(& $matched = null)
     {
-        self::dispatch();
-        if (!is_null(self::$data['content'])) {
-            echo self::$data['content'];
+        $method = $_SERVER['REQUEST_METHOD'];
+        $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+        $matchPos = self::matchUri($method, $uri, $matched);
+
+        $captureArr = [];
+        $mdlArr = self::$middlewares[$matchPos] ?? self::common('middleware');
+        foreach ($mdlArr as $mdl) {
+            $captureArr[] = self::$alias[$mdl];
         }
+
+        $captureArr[] = self::$callbacks[$matchPos];
+
+        return $captureArr;
+    }
+
+    /**
+     * Runs the callback for the given request
+     */
+    public static function dispatch()
+    {
+        $method = $_SERVER['REQUEST_METHOD'];
+        $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+        $matchPos = self::matchUri($method, $uri, $matched);
+
+        // Middleware check
+        self::pipeMiddleware($matchPos);
+
+        $callback = self::resolveCallback(self::$callbacks[$matchPos]);
+
+        // Run final function
+        $result = is_null($matched) ? call_user_func($callback) : call_user_func_array($callback, $matched);
+
+        self::response($result);
+    }
+
+    protected static function response($content = null)
+    {
+        self::render($content);
+        if (!is_null(self::$content)) {
+            echo self::$content;
+        }
+
+        exit();
     }
 
     /**
      * Init Route from register.
      */
-    protected static function init($prefix = '', $namespace = '', $middlewarePath = [], $middleware = [])
+    protected static function init($prefix = '', $namespace = '', $alias = [], $middleware = [])
     {
-        self::$data['prefix'] = $prefix;
-        self::$data['namespace'] = $namespace;
-        self::$data['middlewarePath'] = $middlewarePath;
-        self::$data['middleware'] = self::resolveMiddleware($middleware);
+        self::$alias = $alias;
+        self::setMiddleware($middleware, true);
+        self::common('namespace', $namespace);
+        self::common('prefix', $prefix);
+        self::common('depth', 0);
     }
 
     /**
@@ -155,77 +264,119 @@ class Route {
     protected static function instance()
     {
         if (is_null(self::$object)) {
-            self::$object = new Route();
+            self::$object = new self();
         }
 
         return self::$object;
     }
 
-    protected static function setMiddleware($middlewareArray)
+    protected static function pushPos()
     {
-        $pos = self::$data['pos'];
-        self::$middlewares[$pos] = array_unique(array_merge(self::$middlewares[$pos], $middlewareArray));
+        if (is_null(self::$pos)) {
+            return self::$pos = 0;
+        }
+
+        return ++self::$pos;
+    }
+
+    protected static function setMiddleware($middleware, $isCommon = false)
+    {
+        $middlewareArr = self::resolveMiddleware($middleware);
+        if (empty($middlewareArr)) {
+            return false;
+        }
+
+        $isCommon ? $map = & self::$common['middleware'] : $map = & self::$middlewares[self::$pos];
+        $map = array_unique(array_merge($map ?? [], $middlewareArr));
+
+        return true;
     }
 
     protected static function resolveMiddleware($middleware)
     {
+        if (empty($middleware)) {
+            return [];
+        }
+
         if (!is_array($middleware)) {
-            $middleware = explode(',', $middleware);
+            $middleware = explode(',', str_replace(' ', '', $middleware));
         }
 
-        $allowedMiddlewares = array_keys(self::$data['middlewarePath']);
-        $rightMiddleware = [];
-        foreach ($middleware as $mdl) {
-            $mdl = trim($mdl);
-            if (in_array($mdl, $allowedMiddlewares, true)) {
-                $rightMiddleware[] = $mdl;
-            }
+        $allowedMiddlewares = array_keys(self::$alias);
+        $undefinedMdl = array_diff($middleware, $allowedMiddlewares);
+        if (!empty($undefinedMdl)) {
+            throw new RouteException(
+                'Middleware [' . implode(',', $undefinedMdl) . '] is not defined in register().'
+            );
         }
 
-        return $rightMiddleware;
+        return $middleware;
     }
     
     protected static function prefix($uri)
     {
-        $uri = strpos($uri, '/') === 0 ? $uri : '/' . $uri;
-        return self::$data['prefix'] . $uri;
+        $uri = trim(trim($uri), '/');
+        return self::common('prefix') . (strlen($uri) > 0 ? '/' : '') . $uri;
+    }
+
+    /**
+     * Get/Set common data
+     */
+    protected static function common($key, $newValue = null)
+    {
+        if (is_null($newValue)) {
+            return self::$common[$key] ?? false;
+        }
+
+        self::$common[$key] = $newValue;
     }
 
     protected static function prependNamespace($class)
     {
+        if (!is_string($class)) {
+            return $class;
+        }
+
         $parts = explode('/', $class);
-        return self::$data['namespace'] . end($parts);
+
+        return self::common('namespace') . end($parts);
     }
 
     protected static function constructGroup($params) {
-        $lastParams = [];
+        $context = [];
         foreach ($params as $param => $value) {
             if (empty($value)) {
                 continue;
             }
 
-            $lastParams[$param] = self::$data[$param];
+            $context[$param] = self::common($param);
 
-            if ($param == 'prefix') {
-                self::$data[$param] .= '/' . trim($value, '/');
-            }
-
-            if ($param == 'namespace' && empty(self::$data[$param])) {
-                self::$data[$param] = trim($value, '\\') . '\\';
-            }
-
-            if ($param == 'middleware') {
-                $middleware = self::resolveMiddleware($value);
-                self::$data[$param] = array_unique(array_merge(self::$data[$param], $middleware));
+            switch ($param) {
+                case 'prefix' :
+                    self::common($param, self::prefix($value));
+                    break;
+                case 'namespace' :
+                    self::common($param, trim($value));
+                    break;
+                case 'middleware' :
+                    if (self::setMiddleware($value, true)) {
+                        self::$common['depth']++;
+                    }
+                    break;
+                default:
             }
         }
 
-        return $lastParams;
+        return $context;
     }
 
-    protected static function destructGroup($params) {
-        foreach ($params as $param => $value) {
-            self::$data[$param] = $value;
+    protected static function destructGroup($context) {
+        foreach ($context as $param => $value) {
+            self::common($param, $value);
+        }
+
+        if (in_array('middleware', array_keys($context))) {
+            self::$common['depth']--;
         }
     }
 
@@ -237,56 +388,42 @@ class Route {
 
         // Grab the controller name and method call
         $segments = explode('@', $callback);
+        @list($callbackClass, $callbackMethod) = $segments;
 
-        if (!class_exists($segments[0])) {
-            return false;
+        if (!class_exists($callbackClass)) {
+            throw new RouteException('Class ' . $callbackClass . ' is not exist.');
         }
 
-        if (!isset($segments[1])) {
-            $segments[1] = $defaultMethod;
-        }
+        $callbackMethod = $callbackMethod ?? $defaultMethod;
 
-        if (!method_exists($segments[0], $segments[1])) {
-            return false;
+        if (!method_exists($callbackClass, $callbackMethod)) {
+            throw new RouteException('Method ' . $callback . ' is not callable in Class ' . $callbackClass . '.');
         }
 
         // Instanitate controller
-        $controller = new $segments[0]();
+        $controller = new $callbackClass();
 
-        return array($controller, $segments[1]);
+        return array($controller, $callbackMethod);
     }
 
     protected static function pipeMiddleware($pos)
     {
-        if (!isset(self::$middlewares[$pos])) {
-            return true;
-        }
-
-        foreach (self::$middlewares[$pos] as $mdl) {
-
-            $callback = self::resolveCallback(self::$data['middlewarePath'][$mdl]);
-
-            if ($callback === false) {
-                self::render('Middleware: ' . self::$data['middlewarePath'][$mdl] . '@handle() not found');
-                return false;
-            }
-
+        $mdlArr = self::$middlewares[$pos] ?? self::common('middleware');
+        foreach ($mdlArr as $mdl) {
+            $callback = self::resolveCallback(self::$alias[$mdl]);
             $result = call_user_func($callback);
             if ($result !== true) {
-                self::render($result);
-                return false;
+                self::response($result);
             }
         }
-
-        return true;
     }
 
     /**
-     * Rendering response content simply.
+     * Rendering response content
      */
     protected static function render($content)
     {
-        if ($content === null) {
+        if (is_null($content)) {
             return;
         }
 
@@ -295,87 +432,52 @@ class Route {
         }
 
         if (!is_string($content) && !is_numeric($content) && !is_callable(array($content, '__toString'))) {
-            self::$data['content'] = sprintf('The Response content must be a string or object implementing __toString(), "%s" given.', gettype($content));
-            return;
+            throw new RouteException(sprintf(
+                'Response content must be a string or object implementing __toString(), "%s" given.',
+                gettype($content)
+            ));
         }
 
-        self::$data['content'] = (string) $content;
+        self::$content = strval($content);
     }
 
-    /**
-     * Runs the callback for the given request
-     */
-    protected static function dispatch()
+    protected static function handleNotFound()
     {
-        $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-        $method = $_SERVER['REQUEST_METHOD'];
-
-        $searches = array_keys(static::$patterns);
-        $replaces = array_values(static::$patterns);
-
-        self::$routes = preg_replace('/\/+/', '/', self::$routes);
-
-        // Check if route is defined without regex
-        if (in_array($uri, self::$routes)) {
-            $route_pos = array_keys(self::$routes, $uri);
-            foreach ($route_pos as $route) {
-                // Using an ANY option to match both GET and POST requests
-                if (self::$methods[$route] == $method || self::$methods[$route] == 'ANY') {
-                    // Middleware check
-                    if (self::pipeMiddleware($route)) {
-                        // run final function
-                        $callback = self::resolveCallback(self::$callbacks[$route]);
-                        if ($callback === false) {
-                            self::render('ERROR(' . self::$callbacks[$route] . '): Controller or action not found');
-                        } else {
-                            self::render(call_user_func($callback));
-                        }
-                    }
-                    return;
-                }
-            }
-        } else {
-            // Check if defined with regex
-            for ($pos = 0; $pos <= self::$data['pos']; $pos++) {
-                if (strpos(self::$routes[$pos], ':') === false) {
-                    continue;
-                }
-
-                $route = str_replace($searches, $replaces, self::$routes[$pos]);
-                if (preg_match('#^' . $route . '$#', $uri, $matched)) {
-                    if (self::$methods[$pos] == $method || self::$methods[$pos] == 'ANY') {
-                        // Middleware check
-                        if (self::pipeMiddleware($route)) {
-                            // Remove $matched[0] as [1] is the first parameter.
-                            array_shift($matched);
-                            // run final function
-                            $callback = self::resolveCallback(self::$callbacks[$pos]);
-                            if ($callback === false) {
-                                self::render('ERROR(' . self::$callbacks[$pos] . '): Controller or action not found');
-                            } else {
-                                self::render(call_user_func_array($callback, $matched));
-                            }
-                        }
-                        return;
-                    }
-                }
-            }
-        }
-
-        // Run the error callback if the route was not found
-        if (!self::$error_callback) {
-            self::$error_callback = function() {
-                header($_SERVER['SERVER_PROTOCOL']." 404 Not Found");
+        if (is_null(self::$error)) {
+            $handler = function() {
+                header($_SERVER['SERVER_PROTOCOL'] . ' 404 Not Found');
                 echo 404;
             };
         } else {
-            if (is_string(self::$error_callback)) {
-                self::get($_SERVER['REQUEST_URI'], self::$error_callback);
-                self::$error_callback = null;
-                self::dispatch();
-                return;
+            $handler = self::resolveCallback(self::$error);
+        }
+
+        self::response(call_user_func($handler));
+    }
+
+    protected static function matchUri($requestMethod, $requestUri, & $matched = null)
+    {
+        $matchMethods = array($requestMethod, 'ANY');
+        foreach ($matchMethods as $method) {
+            if (isset(self::$routes[$method][$requestUri])) {
+                return self::$routes[$method][$requestUri];
             }
         }
-        self::render(call_user_func(self::$error_callback));
+
+        $searches = array_keys(self::$patterns);
+        $replaces = array_values(self::$patterns);
+        foreach ($matchMethods as $method) {
+            foreach (self::$matches[$method] ?? [] as $regexUri => $pos) {
+                $pattern = str_replace($searches, $replaces, $regexUri);
+                if (preg_match('#^' . $pattern . '$#', $requestUri, $matched)) {
+                    // Remove $matched[0] as [1] is the first parameter.
+                    array_shift($matched);
+                    return $pos;
+                }
+            }
+        }
+
+        // Run the error callback if the request was not matched
+        self::handleNotFound();
     }
 }

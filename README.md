@@ -1,10 +1,8 @@
 # Conveyor
 ## Intro
-Conveyor is a PHP router, supports simple route group function.
+Conveyor is a PHP router, supports route group function.
 
-This is a project base on [Macaw](https://github.com/noahbuscher/macaw), so that basic functions are still working well.
-
-Most codes are rewrited to support route group. On this change you can:
+Features:
 
 Register available uri-prefix, class namespace and middleware initially;
 
@@ -13,12 +11,16 @@ Set different route prefix and namespace in each route group;
 Set simple middlewares for every route.
 
 ## Install
-If you have Composer, just include  as a project dependency in your composer.json. If you don't just install it by downloading the .ZIP file and extracting it to your project directory.
+If you have Composer, just include as a project dependency in your composer.json. If you don't just install it by downloading the .ZIP file and extracting it to your project directory.
 
 ```
 require: {
     "ween/conveyor": "dev-master"
 }
+```
+Or command line:
+```
+composer require ween/conveyor
 ```
 
 ## Usage
@@ -28,7 +30,7 @@ require: {
 use Conveyor\Route;
 ```
 
-### Second and last, write the route(writing style just like Laravel):
+### Second, write routes(writing style just like Laravel):
 
 #### Basic:
 
@@ -47,6 +49,18 @@ Route::any('/', function() {
 
 Route::get('/', 'DemoControllers@method');
 
+```
+
+### Last, dispatch or just capture request:
+##### single usage:
+```PHP
+// Will dispatch routes, run the middlewares and finally call the matched method
+Route::dispatch();
+```
+##### usage in container:
+```PHP
+// Capture the matched array, which include class names of all middlewares and the matched method 
+Route::capture();
 ```
 
 #### You can also use regex in Route, three can be recognized now:
@@ -73,13 +87,10 @@ Route::get('/a/(:num)b/ab', function() {
  * $params recognize three keywords now:
  * $params['prefix'] set a prefix uri for current group;
  * $params['namespace'] set the namespace for current group, so that class can be autoloaded with PSR-4;
- * $params['middleware'] set some registered middlewares before call final action.
+ * $params['middleware'] set some registered middlewares before call final function.
  */
 Route::group(array $params, closure $callback);
 ```
-
-> In a group tree, only the first namespace will work.
-
 
 ```PHP
 Route::group(['prefix' => '/user', 'namespace' => 'App\\Controller\\'], function() {
@@ -90,7 +101,7 @@ Route::group(['prefix' => '/user', 'namespace' => 'App\\Controller\\'], function
             return 'I can receive uri like /user/sub1';
         });
 
-        // Request /user/sub1/abc will load class DemoController in namespace App\\Controller\\
+        // Request /user/sub1/abc will load class DemoController in namespace Bpp\\Controller\\
         // Middleware will not work because no registered middleware exist.
         Route::get('/abc', 'DemoController@method');
     });
@@ -121,12 +132,13 @@ Registe some common properties:
 Route::register([
     'prefix' => '',
     'namespace' => 'App\\Controllers\\',
-    'middlewarePath' => [
-        //'alias' => \Namespace\Class::class;
-        'abc' => \Foo\Bar\A::class,
+    'alias' => [
+        // Middleware path array
+        // 'alias' => \Namespace\Class::class;
+        'abc' => \Foo\Bar\FB::class,
         'home' => \App\Middlewares\HomeMiddleware::class,
     ],
-    // just registered alias are valid; 
+    // Just registered alias are valid; 
     'middleware' => 'abc, home'
 ]);
 ```
@@ -136,12 +148,6 @@ Rewrite 404 notice when route dispatch failed:
 Route::error(function() {
   return '404 :: Not Found';
 });
-```
-
-Define a common namespace initially, instead of writing group params:
-> If you call this function first, all namespace parameter in `Route::group()` will not work;
-```PHP
-Route::setNameSpace('App\\Controller\\');
 ```
 
 Set some middlewares for a single route:
@@ -159,7 +165,7 @@ use Conveyor\Route;
 
 Route::register([
     'namespace' => 'App\\Controllers\\',
-    'middlewarePath' => [
+    'alias' => [
         'home' => \App\Middlewares\HomeMiddleware::class,
     ]
 ]);
@@ -181,11 +187,12 @@ class HomeMiddleware
     {
         // $result = 'result of your milldeware validation';
         if ($result) {
-            // if validation success, just return true
+            // if validate success, just return true
             return true;
         } else {
-            // if failed ,please return a error-info array
-            return ['result' => 'error', 'msg' => 'not good'];
+            // if failed ,please give a response array
+            // [some fields...]
+            return ['result' => 'error', 'msg' => 'error message'];
         }
     }
 }
